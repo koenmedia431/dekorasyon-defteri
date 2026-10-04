@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, Loader2, Trash2, CheckCircle2, Bookmark, Paperclip, FileText } from 'lucide-react';
-import { supabase, ATTACHMENT_BUCKET, type Note, type Transaction, type Expense } from '@/lib/supabase';
+import { supabase, ATTACHMENT_BUCKET, type Note, type Transaction, type Expense, type Advance } from '@/lib/supabase';
 import DocumentImport from './DocumentImport';
 import { parseChatMessage, formatMoney, formatDate, KIND_LABELS, type EntryKind } from '@/lib/accounting';
 
@@ -9,21 +9,25 @@ interface Props {
   notes: Note[];
   transactions: Transaction[];
   expenses: Expense[];
+  advances: Advance[];
   onChanged: () => void;
   onEditTx: (t: Transaction) => void;
   onEditExpense: (e: Expense) => void;
+  onEditAdvance: (a: Advance) => void;
 }
 
 const KIND_COLOR: Record<EntryKind, string> = {
   debit: 'text-rose-600 bg-rose-50',
   credit: 'text-emerald-600 bg-emerald-50',
   expense: 'text-amber-600 bg-amber-50',
+  advance: 'text-violet-600 bg-violet-50',
 };
 
 const EXAMPLES = [
   'Salon boya işçiliği 18.000 TL',
   'Ayşe hanım 10 bin kapora verdi',
   'Dün boya aldım 3.250, usta yevmiyesi 1500',
+  'Cihad 5000 avans aldı',
   '15.09 mutfak tadilatı 40000',
 ];
 
@@ -32,7 +36,7 @@ function time(iso: string) {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export default function ChatTab({ customerId, notes, transactions, expenses, onChanged, onEditTx, onEditExpense }: Props) {
+export default function ChatTab({ customerId, notes, transactions, expenses, advances, onChanged, onEditTx, onEditExpense, onEditAdvance }: Props) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -52,7 +56,7 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
     if (!value || sending) return;
     setSending(true);
     setError('');
-    const entries = parseChatMessage(value).map(({ kind, amount, description, date }) => ({ kind, amount, description, date }));
+    const entries = parseChatMessage(value).map(({ kind, amount, description, date, partner }) => ({ kind, amount, description, date, partner }));
     const { error: err } = await supabase.rpc('add_note_with_entries', {
       p_customer_id: customerId,
       p_content: value,
@@ -90,6 +94,7 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
     if (withEntries) {
       await supabase.from('transactions').delete().eq('note_id', note.id);
       await supabase.from('expenses').delete().eq('note_id', note.id);
+      await supabase.from('advances').delete().eq('note_id', note.id);
     }
     await supabase.from('notes').delete().eq('id', note.id);
     if (note.attachment_path) await supabase.storage.from(ATTACHMENT_BUCKET).remove([note.attachment_path]);
@@ -109,6 +114,8 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
               <br />
               Malzeme / boya aldım / usta / nakliye → masraf sayfanıza
               <br />
+              Cihad / Mücahid / Emir + avans → ortak avansına
+              <br />
               📎 ile fiş, fatura veya dekont fotoğrafı / PDF yükleyebilirsiniz.
               <br />
               "dün", "15.09", "3 eylül" gibi tarihleri de anlarım.
@@ -126,7 +133,8 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
         {notes.map(note => {
           const txs = transactions.filter(t => t.note_id === note.id);
           const exps = expenses.filter(e => e.note_id === note.id);
-          const count = txs.length + exps.length;
+          const advs = advances.filter(a => a.note_id === note.id);
+          const count = txs.length + exps.length + advs.length;
           return (
             <div key={note.id} className="space-y-1.5">
               <div className="group ml-auto flex max-w-[85%] items-start justify-end gap-1">
@@ -164,6 +172,7 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
                     {[
                       ...txs.map(t => ({ id: t.id, kind: t.entry_type as EntryKind, amount: t.amount, desc: t.description, date: t.entry_date, edit: () => onEditTx(t) })),
                       ...exps.map(e => ({ id: e.id, kind: 'expense' as EntryKind, amount: e.amount, desc: e.description, date: e.expense_date, edit: () => onEditExpense(e) })),
+                      ...advs.map(a => ({ id: a.id, kind: 'advance' as EntryKind, amount: a.amount, desc: `${a.partner} · ${a.description}`, date: a.advance_date, edit: () => onEditAdvance(a) })),
                     ].map(r => (
                       <button key={r.id} onClick={r.edit} className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-slate-50" title="Düzenle">
                         <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${KIND_COLOR[r.kind]}`}>{KIND_LABELS[r.kind]}</span>
@@ -186,7 +195,7 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
           <div className="mb-2 flex flex-wrap gap-1.5">
             {preview.map((p, i) => (
               <span key={i} className={`rounded-lg px-2 py-1 text-xs font-medium ${KIND_COLOR[p.kind]}`}>
-                {KIND_LABELS[p.kind]}
+                {p.kind === 'advance' ? `${p.partner} avansı` : KIND_LABELS[p.kind]}
                 {p.guessed ? '?' : ''} {formatMoney(p.amount)} · {p.description} · {formatDate(p.date)}
               </span>
             ))}

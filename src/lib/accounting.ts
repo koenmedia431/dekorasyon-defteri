@@ -1,13 +1,18 @@
 // Para/tarih biçimlendirme, ekstre hesabı ve sohbet ayrıştırıcısı.
 // Saf fonksiyonlar; Supabase'e bağımlı değil (testler node ile çalışır).
 
-export type EntryKind = 'debit' | 'credit' | 'expense';
+export type EntryKind = 'debit' | 'credit' | 'expense' | 'advance';
 
 export const KIND_LABELS: Record<EntryKind, string> = {
   debit: 'İş / Fatura',
   credit: 'Tahsilat',
   expense: 'Masraf',
+  advance: 'Ortak Avansı',
 };
+
+// Avans alabilecek ortaklar
+export const PARTNERS = ['Cihad', 'Mücahid', 'Emir'] as const;
+export type Partner = (typeof PARTNERS)[number];
 
 // ===================== BİÇİMLENDİRME =====================
 export function formatMoney(value: number, withSymbol = true): string {
@@ -135,6 +140,7 @@ export interface ParsedEntry {
   description: string;
   date: string;
   guessed: boolean; // tür anahtar kelimeden bulunamadıysa true
+  partner?: Partner; // kind === 'advance' ise
 }
 
 const L = 'a-zA-ZçğıöşüÇĞİÖŞÜâîû';
@@ -180,6 +186,32 @@ export function detectKind(text: string): EntryKind | null {
   if (hasKeyword(lower, words, CREDIT_WEAK)) return 'credit';
   if (hasKeyword(lower, words, DEBIT_WORDS)) return 'debit';
   return null;
+}
+
+// Metinde geçen ortağı bulur (ekleri tolere eder: "Cihad'a", "Emir'e", "Mücahit")
+const PARTNER_STEMS: [string, Partner][] = [
+  ['cihad', 'Cihad'],
+  ['cihat', 'Cihad'],
+  ['mücahid', 'Mücahid'],
+  ['mücahit', 'Mücahid'],
+  ['mucahid', 'Mücahid'],
+  ['mucahit', 'Mücahid'],
+  ['emir', 'Emir'],
+];
+
+export function detectPartner(text: string): Partner | null {
+  const words = trLower(text).split(new RegExp(`[^${L}]+`)).filter(Boolean);
+  for (const w of words) {
+    const hit = PARTNER_STEMS.find(([stem]) => w.startsWith(stem));
+    if (hit) return hit[1];
+  }
+  return null;
+}
+
+function mentionsMaterial(text: string): boolean {
+  const lower = trLower(text);
+  const words = lower.split(new RegExp(`[^${L}]+`)).filter(Boolean);
+  return hasKeyword(lower, words, EXPENSE_NOUNS.filter(n => !['usta', 'işçi', 'isci', 'kalfa', 'yevmiye'].includes(n)));
 }
 
 function buildDate(d: number, mo: number, y?: number): string | null {
@@ -287,13 +319,18 @@ export function parseChatMessage(text: string): ParsedEntry[] {
     const best = amounts.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.value > a.value) ? b : a));
     const descRaw = `${pendingDesc} ${segText.slice(0, best.start)} ${segText.slice(best.end)}`;
     pendingDesc = '';
-    const kind = detectKind(seg) ?? messageKind;
+    let kind = detectKind(seg) ?? messageKind;
+    // Ortak adı geçiyorsa avanstır (ortak malzeme aldıysa masraf olarak kalır)
+    const partner = detectPartner(seg);
+    const isAdvance = partner !== null && !mentionsMaterial(seg);
+    if (isAdvance) kind = 'advance';
     entries.push({
       kind: kind ?? 'debit',
       amount: Math.round(best.value * 100) / 100,
       description: cleanDescription(descRaw),
       date: segDate.date ?? globalDate ?? todayStr(),
       guessed: kind === null,
+      ...(isAdvance ? { partner: partner! } : {}),
     });
   }
   for (const e of entries) if (!e.description) e.description = KIND_LABELS[e.kind];

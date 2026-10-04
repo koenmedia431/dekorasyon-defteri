@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { MessageSquare, BookText, Receipt, FileText, Pencil, Trash2, Phone, MapPin } from 'lucide-react';
-import { supabase, type Transaction, type Expense, type Note } from '@/lib/supabase';
+import { MessageSquare, BookText, Receipt, FileText, HandCoins, Pencil, Trash2, Phone, MapPin } from 'lucide-react';
+import { supabase, type Transaction, type Expense, type Advance, type Note } from '@/lib/supabase';
 import { formatMoney, balanceLabel, type EntryKind } from '@/lib/accounting';
 import type { CustomerWithBalance } from '@/App';
 import CustomerForm from './CustomerForm';
@@ -9,13 +9,15 @@ import ChatTab from './ChatTab';
 import LedgerTab from './LedgerTab';
 import ExpensesTab from './ExpensesTab';
 import StatementTab from './StatementTab';
+import AdvancesTab from './AdvancesTab';
 
-type Tab = 'chat' | 'ledger' | 'expenses' | 'statement';
+type Tab = 'chat' | 'ledger' | 'expenses' | 'advances' | 'statement';
 
 const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
   { key: 'chat', label: 'Sohbet', icon: MessageSquare },
   { key: 'ledger', label: 'Hesap', icon: BookText },
   { key: 'expenses', label: 'Masraflar', icon: Receipt },
+  { key: 'advances', label: 'Avanslar', icon: HandCoins },
   { key: 'statement', label: 'Ekstre', icon: FileText },
 ];
 
@@ -23,6 +25,7 @@ interface Props {
   customer: CustomerWithBalance;
   transactions: Transaction[];
   expenses: Expense[];
+  advances: Advance[];
   notes: Note[];
   onDataChanged: () => void;
   onCustomerUpdated: () => void;
@@ -33,6 +36,7 @@ export default function CustomerDetail({
   customer,
   transactions,
   expenses,
+  advances,
   notes,
   onDataChanged,
   onCustomerUpdated,
@@ -40,7 +44,7 @@ export default function CustomerDetail({
 }: Props) {
   const [tab, setTab] = useState<Tab>('chat');
   const [editingCustomer, setEditingCustomer] = useState(false);
-  const [entryModal, setEntryModal] = useState<{ entry?: EditableEntry; kind?: EntryKind } | null>(null);
+  const [entryModal, setEntryModal] = useState<{ entry?: EditableEntry; kind?: EntryKind; partner?: string } | null>(null);
 
   const totalDebit = transactions.filter(t => t.entry_type === 'debit').reduce((s, t) => s + t.amount, 0);
   const totalCredit = transactions.filter(t => t.entry_type === 'credit').reduce((s, t) => s + t.amount, 0);
@@ -50,6 +54,7 @@ export default function CustomerDetail({
 
   const editTx = (t: Transaction) => setEntryModal({ entry: { kind: t.entry_type, row: t } });
   const editExp = (e: Expense) => setEntryModal({ entry: { kind: 'expense', row: e } });
+  const editAdv = (a: Advance) => setEntryModal({ entry: { kind: 'advance', row: a } });
 
   async function deleteCustomer() {
     if (!confirm(`"${customer.name}" ve tüm hesap hareketleri, masrafları ve notları kalıcı olarak silinsin mi?`)) return;
@@ -123,13 +128,26 @@ export default function CustomerDetail({
 
       <div className="min-h-0 flex-1">
         {tab === 'chat' && (
-          <ChatTab customerId={customer.id} notes={notes} transactions={transactions} expenses={expenses} onChanged={onDataChanged} onEditTx={editTx} onEditExpense={editExp} />
+          <ChatTab
+            customerId={customer.id}
+            notes={notes}
+            transactions={transactions}
+            expenses={expenses}
+            advances={advances}
+            onChanged={onDataChanged}
+            onEditTx={editTx}
+            onEditExpense={editExp}
+            onEditAdvance={editAdv}
+          />
         )}
         {tab === 'ledger' && (
           <LedgerTab transactions={transactions} onEdit={editTx} onAdd={kind => setEntryModal({ kind })} />
         )}
         {tab === 'expenses' && (
           <ExpensesTab expenses={expenses} totalDebit={totalDebit} onEdit={editExp} onAdd={() => setEntryModal({ kind: 'expense' })} />
+        )}
+        {tab === 'advances' && (
+          <AdvancesTab advances={advances} profit={profit} onEdit={editAdv} onAdd={partner => setEntryModal({ kind: 'advance', partner })} />
         )}
         {tab === 'statement' && <StatementTab customer={customer} transactions={transactions} />}
       </div>
@@ -149,6 +167,7 @@ export default function CustomerDetail({
           customerId={customer.id}
           entry={entryModal.entry}
           initialKind={entryModal.kind}
+          initialPartner={entryModal.partner}
           onClose={() => setEntryModal(null)}
           onSaved={() => {
             setEntryModal(null);

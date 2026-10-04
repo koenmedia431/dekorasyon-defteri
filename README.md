@@ -10,7 +10,11 @@ Her müşterinin kartında dört bölüm var:
 | **Sohbet** | Ne olduğunu düz yazıyla yazarsınız, tutar/tür/tarih çıkarılıp listeye eklenir | Hayır |
 | **Hesap** | İş/fatura (borç) ve tahsilatlar, yürüyen bakiye | Ekstre olarak |
 | **Masraflar** | Bu müşteri için sizin giderleriniz ve kâr hesabı | **Hayır** (size özel) |
+| **Avanslar** | Ortakların (Cihad, Mücahid, Emir) bu projeden aldığı avanslar, kâr − avans = kalan | **Hayır** |
 | **Ekstre** | Müşteriye gönderilecek hesap dökümü: WhatsApp ile gönder, yazdır / PDF | Evet |
+
+Kenar çubuğundaki **Ortak Avansları** sayfası, hangi ortağın hangi projeden ne kadar aldığını
+tablo hâlinde gösterir (Tümü / Bu Yıl / Bu Ay).
 
 ## Sohbet örnekleri
 
@@ -20,6 +24,7 @@ Her müşterinin kartında dört bölüm var:
 | `Ayşe hanım 10 bin kapora verdi` | Tahsilat 10.000 ₺ |
 | `Dün boya aldım 3.250, usta yevmiyesi 1500` | İki masraf, dünün tarihiyle |
 | `15.09 mutfak tadilatı 40000` | 15 Eylül tarihli iş |
+| `Cihad 5000 avans aldı` / `Emir'e 3 bin verdim` | Ortak avansı (müşteri bakiyesini etkilemez) |
 | `Perdeler cuma takılacak` | Tutar yok → not olarak kalır |
 
 - Yazarken altta neyin anlaşıldığı görünür.

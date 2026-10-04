@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users, BookOpen, Menu, X } from 'lucide-react';
-import { supabase, type Customer, type Transaction, type Expense, type Note } from '@/lib/supabase';
+import { supabase, type Customer, type Transaction, type Expense, type Advance, type Note } from '@/lib/supabase';
 import CustomerSidebar from '@/components/CustomerSidebar';
 import CustomerDetail from '@/components/CustomerDetail';
+import AdvancesOverview from '@/components/AdvancesOverview';
 
 export type CustomerWithBalance = Customer & { balance: number };
 
@@ -11,6 +12,8 @@ export default function App({ userEmail }: { userEmail: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [advances, setAdvances] = useState<Advance[]>([]);
+  const [showAdvances, setShowAdvances] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -41,16 +44,18 @@ export default function App({ userEmail }: { userEmail: string }) {
   // silent: arka planda yenile (kayıt eklerken ekran yanıp sönmesin)
   const fetchDetail = useCallback(async (id: string, silent = false) => {
     if (!silent) setDetailLoading(true);
-    const [{ data: txData }, { data: expData }, { data: noteData }] = await Promise.all([
+    const [{ data: txData }, { data: expData }, { data: noteData }, { data: advData }] = await Promise.all([
       supabase.from('transactions').select('*').eq('customer_id', id).order('entry_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('expenses').select('*').eq('customer_id', id).order('expense_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('notes').select('*').eq('customer_id', id).order('created_at', { ascending: true }),
+      supabase.from('advances').select('*').eq('customer_id', id).order('advance_date', { ascending: false }).order('created_at', { ascending: false }),
     ]);
 
     const num = <T extends { amount: number }>(rows: T[]) => rows.map(r => ({ ...r, amount: Number(r.amount) }));
     setTransactions(num((txData || []) as Transaction[]));
     setExpenses(num((expData || []) as Expense[]));
     setNotes((noteData || []) as Note[]);
+    setAdvances(num((advData || []) as Advance[]));
     setDetailLoading(false);
   }, []);
 
@@ -63,12 +68,19 @@ export default function App({ userEmail }: { userEmail: string }) {
     else {
       setTransactions([]);
       setExpenses([]);
+      setAdvances([]);
       setNotes([]);
     }
   }, [selectedId, fetchDetail]);
 
   function handleSelect(id: string) {
     setSelectedId(id);
+    setShowAdvances(false);
+    setSidebarOpen(false);
+  }
+
+  function handleShowAdvances() {
+    setShowAdvances(true);
     setSidebarOpen(false);
   }
 
@@ -81,6 +93,7 @@ export default function App({ userEmail }: { userEmail: string }) {
     setSelectedId(null);
     setTransactions([]);
     setExpenses([]);
+    setAdvances([]);
     setNotes([]);
     fetchCustomers();
   }
@@ -110,6 +123,8 @@ export default function App({ userEmail }: { userEmail: string }) {
       userEmail={userEmail}
       onSelect={handleSelect}
       onCustomerAdded={handleCustomerAdded}
+      onShowAdvances={handleShowAdvances}
+      advancesActive={showAdvances}
     />
   );
 
@@ -122,7 +137,7 @@ export default function App({ userEmail }: { userEmail: string }) {
         </button>
         <div className="flex min-w-0 items-center gap-2">
           <Users className="h-5 w-5 flex-shrink-0 text-sky-400" />
-          <h1 className="truncate text-base font-bold text-white">{selectedCustomer?.name ?? 'Müşteri Defteri'}</h1>
+          <h1 className="truncate text-base font-bold text-white">{showAdvances ? 'Ortak Avansları' : selectedCustomer?.name ?? 'Müşteri Defteri'}</h1>
         </div>
       </div>
 
@@ -150,7 +165,9 @@ export default function App({ userEmail }: { userEmail: string }) {
 
       {/* İçerik */}
       <main className="flex-1 overflow-hidden pt-14 lg:pt-0 print:pt-0">
-        {selectedCustomer ? (
+        {showAdvances ? (
+          <AdvancesOverview customers={customers} onOpenCustomer={handleSelect} />
+        ) : selectedCustomer ? (
           detailLoading ? (
             <div className="flex h-full items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
@@ -161,6 +178,7 @@ export default function App({ userEmail }: { userEmail: string }) {
               customer={selectedCustomer}
               transactions={transactions}
               expenses={expenses}
+              advances={advances}
               notes={notes}
               onDataChanged={handleDataChanged}
               onCustomerUpdated={fetchCustomers}

@@ -33,12 +33,14 @@ const KIND_STYLE: Record<EntryKind, string> = {
   debit: 'bg-rose-600 border-rose-600',
   credit: 'bg-emerald-600 border-emerald-600',
   expense: 'bg-amber-500 border-amber-500',
+  advance: 'bg-violet-600 border-violet-600',
 };
 
 const KIND_TEXT: Record<EntryKind, string> = {
   debit: 'text-rose-600',
   credit: 'text-emerald-600',
   expense: 'text-amber-600',
+  advance: 'text-violet-600',
 };
 
 const KINDS: EntryKind[] = ['debit', 'credit', 'expense'];
@@ -99,7 +101,7 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
 
   const activeRows = mode === 'items' ? items.filter(r => r.selected) : mode === 'single' ? [single] : [];
   const totals = useMemo(() => {
-    const t: Record<EntryKind, number> = { debit: 0, credit: 0, expense: 0 };
+    const t: Record<EntryKind, number> = { debit: 0, credit: 0, expense: 0, advance: 0 };
     activeRows.forEach(r => {
       const v = parseAmountInput(r.amount);
       if (v > 0) t[r.kind] += v;

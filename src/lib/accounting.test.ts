@@ -204,3 +204,30 @@ TOPLAM *2.485,50`);
     ['FIRÇA SETİ', 185.5],
   ]);
 });
+
+test('ortak avansı: ortak adı geçen mesaj avans olur', () => {
+  const a = one('Cihad 5000 avans aldı');
+  assert.equal(a.kind, 'advance');
+  assert.equal(a.partner, 'Cihad');
+  assert.equal(a.amount, 5000);
+  const b = one("Emir'e 3 bin verdim");
+  assert.equal(b.kind, 'advance');
+  assert.equal(b.partner, 'Emir');
+  const c = one('Mücahit 2.500 çekti');
+  assert.equal(c.partner, 'Mücahid');
+  assert.equal(c.kind, 'advance');
+  // Ortak malzeme aldıysa masraf olarak kalır
+  const d = one('Emir boya aldı 2000');
+  assert.equal(d.kind, 'expense');
+  assert.equal(d.partner, undefined);
+  // Müşteriden gelen avans tahsilattır
+  assert.equal(one('müşteri 10 bin avans verdi').kind, 'credit');
+});
+
+test('ortak avansı: karışık mesaj', () => {
+  const r = parseChatMessage('dün salon işi 20000, Cihad 4000 avans aldı');
+  assert.deepEqual(r.map(e => [e.kind, e.partner ?? null, e.amount]), [
+    ['debit', null, 20000],
+    ['advance', 'Cihad', 4000],
+  ]);
+});

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search, UserPlus, Users, LogOut } from 'lucide-react';
+import { Search, UserPlus, Users, LogOut, HandCoins } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatMoney, balanceLabel } from '@/lib/accounting';
 import type { CustomerWithBalance } from '@/App';
@@ -11,9 +11,11 @@ interface Props {
   userEmail: string;
   onSelect: (id: string) => void;
   onCustomerAdded: (id?: string) => void;
+  onShowAdvances: () => void;
+  advancesActive: boolean;
 }
 
-export default function CustomerSidebar({ customers, selectedId, userEmail, onSelect, onCustomerAdded }: Props) {
+export default function CustomerSidebar({ customers, selectedId, userEmail, onSelect, onCustomerAdded, onShowAdvances, advancesActive }: Props) {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
 
@@ -36,6 +38,14 @@ export default function CustomerSidebar({ customers, selectedId, userEmail, onSe
           <p className="text-xs text-slate-400">Toplam alacak</p>
           <p className="text-lg font-bold text-amber-300">{formatMoney(receivable)}</p>
         </div>
+        <button
+          onClick={onShowAdvances}
+          className={`mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
+            advancesActive ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <HandCoins className="h-4 w-4" /> Ortak Avansları
+        </button>
         <div className="flex gap-2">
           <div className="flex flex-1 items-center gap-2 rounded-lg bg-slate-800 px-3">
             <Search className="h-4 w-4 text-slate-500" />
@@ -70,7 +80,7 @@ export default function CustomerSidebar({ customers, selectedId, userEmail, onSe
                 key={c.id}
                 onClick={() => onSelect(c.id)}
                 className={`flex w-full items-center gap-3 border-b border-slate-800 px-4 py-3 text-left hover:bg-slate-800 ${
-                  c.id === selectedId ? 'bg-slate-800' : ''
+                  c.id === selectedId && !advancesActive ? 'bg-slate-800' : ''
                 }`}
               >
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-sky-900 text-sm font-bold text-sky-300">

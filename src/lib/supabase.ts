@@ -41,6 +41,18 @@ export interface Expense {
   created_at: string;
 }
 
+// Ortağın projeden aldığı avans (müşteri bakiyesini etkilemez)
+export interface Advance {
+  id: string;
+  customer_id: string;
+  partner: string;
+  amount: number;
+  description: string;
+  advance_date: string;
+  note_id: string | null;
+  created_at: string;
+}
+
 export interface Note {
   id: string;
   customer_id: string;
