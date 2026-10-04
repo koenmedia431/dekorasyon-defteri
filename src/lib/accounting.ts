@@ -299,3 +299,119 @@ export function parseChatMessage(text: string): ParsedEntry[] {
   for (const e of entries) if (!e.description) e.description = KIND_LABELS[e.kind];
   return entries;
 }
+
+// ===================== BELGE (FİŞ / FATURA / DEKONT) AYRIŞTIRICI =====================
+// OCR veya PDF'ten gelen metinden tek bir kayıt önerir: toplam tutar, tarih, firma ve tür.
+
+export interface ParsedDocument extends ParsedEntry {
+  docType: 'Fiş' | 'Fatura' | 'Dekont' | 'Teklif' | 'Belge';
+  candidates: number[]; // kullanıcı seçebilsin diye bulunan diğer tutarlar (büyükten küçüğe)
+}
+
+// "1.250,00" / "1250,00" / "1,250.00" / "1250.00" / "1 250,00" / "1250" -> sayı
+function parseDocNumber(raw: string): number {
+  let s = raw.replace(/\s/g, '');
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    // Hangisi sondaysa ondalık ayırıcıdır
+    s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (lastComma > -1) {
+    s = /,\d{1,2}$/.test(s) ? s.replace(',', '.') : s.replace(/,/g, '');
+  } else if (lastDot > -1 && !/\.\d{1,2}$/.test(s)) {
+    s = s.replace(/\./g, ''); // 1.250 -> binlik ayırıcı
+  }
+  return Number(s);
+}
+
+const DOC_NUMBER_RE = /\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+/g;
+
+function numbersInLine(line: string): number[] {
+  // Tarih, saat ve telefon gibi parçaları tutar sanmamak için ayıkla
+  const cleaned = line
+    .replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, ' ')
+    .replace(/\b\d{1,2}:\d{2}(:\d{2})?\b/g, ' ')
+    .replace(/%\s*\d+/g, ' ');
+  return (cleaned.match(DOC_NUMBER_RE) ?? []).map(parseDocNumber).filter(n => Number.isFinite(n) && n > 0 && n < 100_000_000);
+}
+
+// Öncelik sırasıyla toplam satırı anahtar kelimeleri
+const TOTAL_KEYS: [RegExp, number][] = [
+  [/genel\s*toplam|g\.?\s*toplam/i, 6],
+  [/[öo]denecek\s*tutar|[öo]denecek/i, 5],
+  [/toplam\s*tutar|tutar\s*toplam/i, 4],
+  [/i[sş]lem\s*tutar[ıi]|g[öo]nderilen\s*tutar|havale\s*tutar[ıi]|eft\s*tutar[ıi]/i, 4],
+  [/(^|\s)top(lam)?(\s|$|:|\*)/i, 3],
+  [/(^|\s)(tutar|total)(\s|$|:)/i, 2],
+];
+
+const TOTAL_EXCLUDE = /kdv|vergi|ara\s*toplam|indirim|iskonto|matrah|para\s*üstü|para\s*ustu|nakit\s*verilen/i;
+
+export function parseDocument(text: string): ParsedDocument {
+  const lines = text
+    .split(/\r?\n/)
+    .map(l => l.replace(/[|]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const lower = trLower(text);
+
+  // Tür
+  let docType: ParsedDocument['docType'] = 'Belge';
+  let kind: EntryKind = 'expense';
+  if (/dekont|havale|eft|fast|g[öo]nderen|al[ıi]c[ıi]\s*(ad|iban)|iban/.test(lower)) {
+    docType = 'Dekont';
+    kind = 'credit';
+  } else if (/teklif|proforma/.test(lower)) {
+    docType = 'Teklif';
+    kind = 'debit';
+  } else if (/fatura|e-ar[şs]iv|vkn|vergi\s*no/.test(lower)) {
+    docType = 'Fatura';
+  } else if (/fi[şs]|z\s*no|ekü|kasa|nakit|kredi\s*kart/.test(lower)) {
+    docType = 'Fiş';
+  }
+
+  // Tutar: en yüksek öncelikli toplam satırındaki son sayı; yoksa belgedeki en büyük ondalıklı sayı
+  let best: { value: number; score: number; index: number } | null = null;
+  lines.forEach((line, i) => {
+    if (TOTAL_EXCLUDE.test(line)) return;
+    for (const [re, score] of TOTAL_KEYS) {
+      if (!re.test(line)) continue;
+      // Sayı aynı satırda yoksa bir sonraki satıra bak (tablolarda sık görülür)
+      let nums = numbersInLine(line);
+      if (nums.length === 0 && lines[i + 1]) nums = numbersInLine(lines[i + 1]);
+      if (nums.length === 0) continue;
+      const value = nums[nums.length - 1];
+      // Eşit öncelikte alttaki satır kazanır (toplam genelde en sondadır)
+      if (!best || score > best.score || (score === best.score && i >= best.index)) best = { value, score, index: i };
+      break;
+    }
+  });
+
+  const decimals = lines.flatMap(l => (/\d[.,]\d{2}\b/.test(l) ? numbersInLine(l) : []));
+  const all = [...new Set([...decimals, ...lines.flatMap(numbersInLine)])].sort((a, b) => b - a);
+  const amount = (best as { value: number } | null)?.value ?? decimals.sort((a, b) => b - a)[0] ?? 0;
+
+  // Tarih: ilk geçerli tarih
+  let date: string | null = null;
+  const dm = text.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4}|\d{2})\b/);
+  if (dm) date = buildDate(Number(dm[1]), Number(dm[2]), Number(dm[3]));
+  if (!date) date = extractDate(text).date;
+
+  // Firma / açıklama: harf içeren, anlamlı ilk satır
+  const SKIP = /^(fi[şs]|fatura|e-ar[şs]iv|tarih|saat|no|vkn|tckn|vergi|tel|adres|www\.|http|dekont|sayın)/i;
+  const vendor =
+    lines.find(l => {
+      const letters = (l.match(new RegExp(`[${L}]`, 'g')) ?? []).length;
+      return letters >= 3 && letters / l.length > 0.5 && !SKIP.test(trLower(l));
+    }) ?? '';
+  const description = cleanDescription(`${docType === 'Belge' ? '' : docType + ': '}${vendor.slice(0, 60)}`) || docType;
+
+  return {
+    kind,
+    amount: Math.round(amount * 100) / 100,
+    description,
+    date: date ?? todayStr(),
+    guessed: docType === 'Belge',
+    docType,
+    candidates: all.slice(0, 8),
+  };
+}

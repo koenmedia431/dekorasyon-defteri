@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Send, Loader2, Trash2, CheckCircle2, Bookmark } from 'lucide-react';
-import { supabase, type Note, type Transaction, type Expense } from '@/lib/supabase';
+import { Send, Loader2, Trash2, CheckCircle2, Bookmark, Paperclip, FileText } from 'lucide-react';
+import { supabase, ATTACHMENT_BUCKET, type Note, type Transaction, type Expense } from '@/lib/supabase';
+import DocumentImport from './DocumentImport';
 import { parseChatMessage, formatMoney, formatDate, KIND_LABELS, type EntryKind } from '@/lib/accounting';
 
 interface Props {
@@ -35,7 +36,9 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -68,6 +71,19 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
     }
   }
 
+  async function openAttachment(note: Note) {
+    if (!note.attachment_path) return;
+    // Pencereyi hemen aç (tarayıcı açılır pencere engeline takılmasın), adresi sonra ver
+    const win = window.open('', '_blank');
+    const { data, error: err } = await supabase.storage.from(ATTACHMENT_BUCKET).createSignedUrl(note.attachment_path, 300);
+    if (err || !data) {
+      win?.close();
+      return alert('Dosya açılamadı');
+    }
+    if (win) win.location.href = data.signedUrl;
+    else window.location.href = data.signedUrl;
+  }
+
   async function deleteNote(note: Note, linkedCount: number) {
     const withEntries = linkedCount > 0 && confirm('Bu mesajdan oluşan kayıtlar da silinsin mi?\n\nTamam: mesaj + kayıtlar\nİptal: sadece mesaj');
     if (!withEntries && !confirm('Mesaj silinsin mi?')) return;
@@ -76,6 +92,7 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
       await supabase.from('expenses').delete().eq('note_id', note.id);
     }
     await supabase.from('notes').delete().eq('id', note.id);
+    if (note.attachment_path) await supabase.storage.from(ATTACHMENT_BUCKET).remove([note.attachment_path]);
     onChanged();
   }
 
@@ -91,6 +108,8 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
               Ödedi / kapora / havale / eft → tahsilata
               <br />
               Malzeme / boya aldım / usta / nakliye → masraf sayfanıza
+              <br />
+              📎 ile fiş, fatura veya dekont fotoğrafı / PDF yükleyebilirsiniz.
               <br />
               "dün", "15.09", "3 eylül" gibi tarihleri de anlarım.
             </p>
@@ -119,7 +138,16 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
                 <div className="rounded-2xl rounded-br-sm bg-sky-600 px-4 py-2 text-white">
-                  <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+                  {note.attachment_path && (
+                    <button
+                      onClick={() => openAttachment(note)}
+                      className="mb-1 flex items-center gap-1.5 rounded-lg bg-sky-700/60 px-2 py-1 text-xs font-medium hover:bg-sky-800"
+                      title="Dosyayı aç"
+                    >
+                      <FileText className="h-3.5 w-3.5" /> {note.attachment_name ?? 'Dosya'}
+                    </button>
+                  )}
+                  <p className="whitespace-pre-wrap text-sm">{note.attachment_path ? note.content.split('\n').slice(1).join('\n') || 'Dosya eklendi' : note.content}</p>
                   <p className="mt-1 text-right text-[10px] text-sky-100">{time(note.created_at)}</p>
                 </div>
               </div>
@@ -166,6 +194,25 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
         )}
         {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
         <div className="flex items-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) setImportFile(f);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-500 hover:bg-slate-50 hover:text-sky-600"
+            title="Fiş, fatura veya dekont yükle (fotoğraf / PDF)"
+            aria-label="Belge yükle"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
@@ -184,6 +231,17 @@ export default function ChatTab({ customerId, notes, transactions, expenses, onC
           </button>
         </div>
       </div>
+      {importFile && (
+        <DocumentImport
+          customerId={customerId}
+          file={importFile}
+          onClose={() => setImportFile(null)}
+          onSaved={() => {
+            setImportFile(null);
+            onChanged();
+          }}
+        />
+      )}
     </div>
   );
 }

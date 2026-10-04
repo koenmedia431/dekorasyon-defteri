@@ -45,5 +45,9 @@ export interface Note {
   id: string;
   customer_id: string;
   content: string;
+  attachment_path: string | null;
+  attachment_name: string | null;
   created_at: string;
 }
+
+export const ATTACHMENT_BUCKET = 'attachments';

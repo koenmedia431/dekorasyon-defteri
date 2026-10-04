@@ -69,3 +69,65 @@ test('ekstre: devir ve yürüyen bakiye', () => {
   assert.equal(st.closing, 11000);
   assert.equal(balanceOf(entries), 11000);
 });
+
+import { parseDocument } from './accounting.ts';
+
+test('belge: market / nalbur fişi', () => {
+  const d = parseDocument(`KOÇTAŞ YAPI MARKETLERİ
+KADIKÖY ŞUBESİ
+TARİH: 21.09.2026 SAAT: 14:32
+FİŞ NO: 0042
+PLASTİK BOYA 15LT      2 X 1.150,00
+              *2.300,00
+FIRÇA SETİ             *185,50
+ARA TOPLAM             *2.485,50
+KDV %20                *414,25
+TOPLAM                 *2.485,50
+NAKİT                  *2.500,00
+PARA ÜSTÜ              *14,50`);
+  assert.equal(d.amount, 2485.5);
+  assert.equal(d.date, '2026-09-21');
+  assert.equal(d.kind, 'expense');
+  assert.equal(d.docType, 'Fiş');
+  assert.match(d.description, /KOÇTAŞ/);
+});
+
+test('belge: e-arşiv fatura (ödenecek tutar)', () => {
+  const d = parseDocument(`e-Arşiv Fatura
+Yıldız Alçı ve Yapı Malzemeleri Ltd. Şti.
+VKN: 1234567890
+Fatura Tarihi: 02/10/2026
+Mal Hizmet Toplam Tutarı 10.000,00 TL
+Hesaplanan KDV (%20) 2.000,00 TL
+Vergiler Dahil Toplam Tutar 12.000,00 TL
+Ödenecek Tutar 12.000,00 TL`);
+  assert.equal(d.amount, 12000);
+  assert.equal(d.date, '2026-10-02');
+  assert.equal(d.docType, 'Fatura');
+  assert.equal(d.kind, 'expense');
+  assert.match(d.description, /Yıldız Alçı/);
+});
+
+test('belge: banka dekontu tahsilat olur', () => {
+  const d = parseDocument(`XYZ BANKASI
+HAVALE / EFT DEKONTU
+İşlem Tarihi 03.10.2026
+Gönderen: AYŞE YILMAZ
+Alıcı Adı: MEHMET DEKORASYON
+IBAN: TR12 0001 0000 0000 0000 0000 01
+İşlem Tutarı: 15.000,00 TL
+Açıklama: kapora`);
+  assert.equal(d.amount, 15000);
+  assert.equal(d.kind, 'credit');
+  assert.equal(d.docType, 'Dekont');
+  assert.equal(d.date, '2026-10-03');
+});
+
+test('belge: tutar sonraki satırda ve İngilizce biçim', () => {
+  const d = parseDocument(`Teklif Formu
+Mutfak dolabı montaj
+GENEL TOPLAM
+45,000.00`);
+  assert.equal(d.amount, 45000);
+  assert.equal(d.kind, 'debit');
+});
