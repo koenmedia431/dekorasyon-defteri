@@ -131,3 +131,76 @@ GENEL TOPLAM
   assert.equal(d.amount, 45000);
   assert.equal(d.kind, 'debit');
 });
+
+import { parseDocumentItems } from './accounting.ts';
+
+test('kalemler: karışık hesap dökümü, her satır kendi türünde', () => {
+  const items = parseDocumentItems(`AYŞE YILMAZ - HESAP DÖKÜMÜ
+15.09.2026 Salon boya işçiliği 18.000,00
+16.09.2026 Mutfak tadilatı 40.000,00
+18.09.2026 Kapora alındı 10.000,00
+20.09.2026 Boya alındı 3.250,00
+21.09.2026 Usta yevmiyesi 1.500,00
+22.09.2026 Havale geldi 25.000,00
+GENEL TOPLAM 51.250,00`);
+  assert.deepEqual(
+    items.map(i => [i.kind, i.amount, i.date]),
+    [
+      ['debit', 18000, '2026-09-15'],
+      ['debit', 40000, '2026-09-16'],
+      ['credit', 10000, '2026-09-18'],
+      ['expense', 3250, '2026-09-20'],
+      ['expense', 1500, '2026-09-21'],
+      ['credit', 25000, '2026-09-22'],
+    ]
+  );
+  assert.equal(items[0].description, 'Salon boya işçiliği');
+  assert.equal(parseDocument('AYŞE YILMAZ - HESAP DÖKÜMÜ\nHavale geldi 25.000,00').docType, 'Döküm');
+});
+
+test('kalemler: fiş satırları, KDV / toplam / nakit atlanır', () => {
+  const items = parseDocumentItems(`KOÇTAŞ YAPI MARKETLERİ
+TARİH: 21.09.2026 SAAT: 14:32
+FİŞ NO: 0042
+PLASTİK BOYA 15LT
+2 X 1.150,00 *2.300,00
+FIRÇA SETİ *185,50
+KDV %20 *414,25
+TOPLAM *2.485,50
+NAKİT *2.500,00
+PARA ÜSTÜ *14,50`);
+  assert.deepEqual(items.map(i => [i.description, i.amount, i.kind]), [
+    ['PLASTİK BOYA', 2300, 'expense'],
+    ['FIRÇA SETİ', 185.5, 'expense'],
+  ]);
+  assert.ok(items.every(i => i.date === '2026-09-21'));
+});
+
+test('kalemler: fatura tablosu satırları', () => {
+  const items = parseDocumentItems(`e-Arşiv Fatura
+Yıldız Alçı ve Yapı Malzemeleri Ltd. Şti.
+Fatura Tarihi: 02/10/2026
+Saten alçı 25 kg 40 8.000,00 TL
+Köşe profili 100 2.000,00 TL
+Mal Hizmet Toplam Tutarı 10.000,00 TL
+Hesaplanan KDV (%20) 2.000,00 TL
+Ödenecek Tutar 12.000,00 TL`);
+  assert.deepEqual(items.map(i => [i.description, i.amount, i.kind, i.date]), [
+    ['Saten alçı', 8000, 'expense', '2026-10-02'],
+    ['Köşe profili', 2000, 'expense', '2026-10-02'],
+  ]);
+});
+
+test('kalemler: OCR boşluklu tutar ve yıldızlı satır toplamı', () => {
+  const items = parseDocumentItems(`KOÇTAŞ YAPI MARKETLERİ
+TARİH: 21.09.2026 SAAT: 14:32
+PLASTİK BOYA 15LT
+2 X 1.150,00 *2.300, 00
+FIRÇA SETİ *185,50
+KDV 420 *414,25
+TOPLAM *2.485,50`);
+  assert.deepEqual(items.map(i => [i.description, i.amount]), [
+    ['PLASTİK BOYA', 2300],
+    ['FIRÇA SETİ', 185.5],
+  ]);
+});

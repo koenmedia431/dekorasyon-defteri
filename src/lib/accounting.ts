@@ -304,7 +304,7 @@ export function parseChatMessage(text: string): ParsedEntry[] {
 // OCR veya PDF'ten gelen metinden tek bir kayıt önerir: toplam tutar, tarih, firma ve tür.
 
 export interface ParsedDocument extends ParsedEntry {
-  docType: 'Fiş' | 'Fatura' | 'Dekont' | 'Teklif' | 'Belge';
+  docType: 'Fiş' | 'Fatura' | 'Dekont' | 'Teklif' | 'Döküm' | 'Belge';
   candidates: number[]; // kullanıcı seçebilsin diye bulunan diğer tutarlar (büyükten küçüğe)
 }
 
@@ -322,6 +322,16 @@ function parseDocNumber(raw: string): number {
     s = s.replace(/\./g, ''); // 1.250 -> binlik ayırıcı
   }
   return Number(s);
+}
+
+// OCR düzeltmeleri: "2.300, 00" -> "2.300,00", "1 . 250,00" -> "1.250,00"
+function normalizeOcrLine(l: string): string {
+  return l
+    .replace(/[|]/g, ' ')
+    .replace(/(\d)\s*([.,])\s+(\d{2})(?!\d)/g, '$1$2$3')
+    .replace(/(\d)\s+([.,])(\d)/g, '$1$2$3')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 const DOC_NUMBER_RE = /\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+/g;
@@ -348,16 +358,17 @@ const TOTAL_KEYS: [RegExp, number][] = [
 const TOTAL_EXCLUDE = /kdv|vergi|ara\s*toplam|indirim|iskonto|matrah|para\s*üstü|para\s*ustu|nakit\s*verilen/i;
 
 export function parseDocument(text: string): ParsedDocument {
-  const lines = text
-    .split(/\r?\n/)
-    .map(l => l.replace(/[|]/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+  const lines = text.split(/\r?\n/).map(normalizeOcrLine).filter(Boolean);
   const lower = trLower(text);
 
   // Tür
   let docType: ParsedDocument['docType'] = 'Belge';
   let kind: EntryKind = 'expense';
-  if (/dekont|havale|eft|fast|g[öo]nderen|al[ıi]c[ıi]\s*(ad|iban)|iban/.test(lower)) {
+  if (/d[öo]k[üu]m|ekstre|hesap\s*[öo]zeti|cari\s*hesap/.test(lower)) {
+    // Karışık hesap dökümü: tür satır satır bulunur, varsayılan iş/fatura
+    docType = 'Döküm';
+    kind = 'debit';
+  } else if (/dekont|havale|eft|fast|g[öo]nderen|al[ıi]c[ıi]\s*(ad|iban)|iban/.test(lower)) {
     docType = 'Dekont';
     kind = 'credit';
   } else if (/teklif|proforma/.test(lower)) {
@@ -414,4 +425,98 @@ export function parseDocument(text: string): ParsedDocument {
     docType,
     candidates: all.slice(0, 8),
   };
+}
+
+// ===================== BELGEDEN KALEM KALEM KAYIT =====================
+// Her satırı ayrı kayıt olarak önerir; tür satır bazında bulunur (karışık dökümler için).
+
+export interface DocumentItem extends ParsedEntry {
+  line: string; // kaynak satır (önizlemede gösterilir)
+}
+
+const ITEM_SKIP = /^(tarih|saat|fi[şs]\s*no|fatura\s*(no|tarihi)|belge\s*no|vkn|tckn|vergi|tel|telefon|gsm|adres|iban|www\.|http|e-?posta|mersis|sayın|say[ıi]n|sicil|şube|sube|kasiyer|z\s*no|ekü|eku|banka|hesap\s*no|müşteri\s*no|sayfa)/i;
+const ITEM_EXCLUDE = new RegExp(`${TOTAL_EXCLUDE.source}|genel\\s*toplam|toplam|[öo]denecek|bakiye|devir|nakit$|^nakit|kredi\\s*kart|kart\\s*ile|para\\s*üstü|yalnız|yaln[ıi]z|tutar[ıi]?\\s*:?$`, 'i');
+
+// Açıklama: tarihleri, sayıları, para birimlerini ve adet/ölçü ifadelerini temizle
+function cleanItemText(s: string): string {
+  return cleanDescription(
+    s
+      .replace(/\b\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?\b/g, ' ')
+      .replace(/\b\d+([.,]\d+)?\s*(tl|try|₺|adet|ad|x|kg|gr|lt|l|m2|m²|mt|m|cm|mm|paket|kutu|top|rulo)\b/gi, ' ')
+      .replace(DOC_NUMBER_RE, ' ')
+      .replace(/\b(tl|try|₺|adet|ad|x|kg|lt|m2|m²|mt|paket|kutu|top)\b/gi, ' ')
+      .replace(/[*=:#()%]+/g, ' ')
+  );
+}
+
+function hasDecimal(raw: string) {
+  return /\d[.,]\d{2}(?!\d)/.test(raw);
+}
+
+export function parseDocumentItems(text: string): DocumentItem[] {
+  const doc = parseDocument(text);
+  const lines = text.split(/\r?\n/).map(normalizeOcrLine).filter(Boolean);
+
+  // Belgede tutarlar genelde kuruşlu mu yazılmış? Öyleyse kuruşsuz sayıları (adet, kg, 15LT) tutar sayma
+  const decimalLines = lines.filter(hasDecimal).length;
+  const useDecimalsOnly = decimalLines >= 2;
+
+  const items: DocumentItem[] = [];
+  let pendingDesc = '';
+
+  for (const line of lines) {
+    const lower = trLower(line);
+    if (ITEM_SKIP.test(lower)) {
+      pendingDesc = '';
+      continue;
+    }
+    const letters = (line.match(new RegExp(`[${L}]`, 'g')) ?? []).length;
+
+    // Satırdaki tutar adayları
+    const cleaned = line
+      .replace(/\b\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?\b/g, ' ')
+      .replace(/\b\d{1,2}:\d{2}(:\d{2})?\b/g, ' ')
+      .replace(/%\s*\d+/g, ' ');
+    const tokens = cleaned.match(DOC_NUMBER_RE) ?? [];
+    const amounts = tokens
+      .filter(t => (useDecimalsOnly ? hasDecimal(t) : true))
+      .map(parseDocNumber)
+      .filter(n => Number.isFinite(n) && n >= (useDecimalsOnly ? 0.01 : 10) && n < 100_000_000);
+
+    if (ITEM_EXCLUDE.test(lower)) {
+      pendingDesc = '';
+      continue;
+    }
+
+    if (amounts.length === 0) {
+      // Tutarsız açıklama satırı: bir sonraki tutar satırına aktarılır
+      if (letters >= 3) pendingDesc = line;
+      continue;
+    }
+
+    // Fişlerde satır toplamı "*" ile işaretlenir; varsa onu al, yoksa satırdaki son tutar
+    const starred = cleaned.match(/\*\s*(\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+)/);
+    const starredValue = starred ? parseDocNumber(starred[1]) : NaN;
+    const amount = Number.isFinite(starredValue) && starredValue > 0 ? starredValue : amounts[amounts.length - 1];
+    // Satır tarihi (ör. dökümlerde "15.09.2026 Salon işçiliği 18.000,00")
+    const dm = line.match(/\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{4}|\d{2}))?\b/);
+    const lineDate = dm ? buildDate(Number(dm[1]), Number(dm[2]), dm[3] ? Number(dm[3]) : undefined) : null;
+
+    let desc = cleanItemText(line);
+    if ((desc.match(new RegExp(`[${L}]`, 'g')) ?? []).length < 3) desc = cleanItemText(pendingDesc);
+    else if (pendingDesc && letters < 6) desc = cleanItemText(`${pendingDesc} ${line}`);
+    pendingDesc = '';
+    if (!desc) continue;
+
+    const kind = detectKind(desc) ?? detectKind(line);
+    items.push({
+      kind: kind ?? doc.kind,
+      amount: Math.round(amount * 100) / 100,
+      description: desc.slice(0, 120),
+      date: lineDate ?? doc.date,
+      guessed: kind === null,
+      line,
+    });
+  }
+  return items;
 }
