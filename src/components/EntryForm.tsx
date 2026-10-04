@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { supabase, type Transaction, type Expense, type Advance } from '@/lib/supabase';
-import { KIND_LABELS, PARTNERS, parseAmountInput, todayStr, type EntryKind } from '@/lib/accounting';
+import { KIND_LABELS, PARTNERS, EXPENSE_CATEGORIES, parseAmountInput, todayStr, type EntryKind } from '@/lib/accounting';
 import Modal, { inputClass, labelClass } from './Modal';
+import { useConfirm } from './ui';
 
 export type EditableEntry =
   | { kind: 'debit' | 'credit'; row: Transaction }
@@ -15,14 +16,14 @@ interface Props {
   initialKind?: EntryKind;   // yeni kayıt için
   initialPartner?: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (message: string) => void;
 }
 
 const KIND_STYLE: Record<EntryKind, string> = {
-  debit: 'bg-rose-600 border-rose-600',
-  credit: 'bg-emerald-600 border-emerald-600',
-  expense: 'bg-amber-500 border-amber-500',
-  advance: 'bg-violet-600 border-violet-600',
+  debit: 'bg-debit-600 border-debit-600',
+  credit: 'bg-credit-600 border-credit-600',
+  expense: 'bg-expense-500 border-expense-500',
+  advance: 'bg-advance-600 border-advance-600',
 };
 
 const HINT: Record<EntryKind, string> = {
@@ -51,6 +52,7 @@ export default function EntryForm({ customerId, entry, initialKind, initialPartn
   const [partner, setPartner] = useState(entry?.kind === 'advance' ? entry.row.partner : initialPartner ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   // Seçilen türe göre satır verisi
   function rowData(amt: number, desc: string) {
@@ -84,16 +86,18 @@ export default function EntryForm({ customerId, entry, initialKind, initialPartn
     }
     setBusy(false);
     if (res.error) return setError('Kaydedilemedi: ' + res.error.message);
-    onSaved();
+    onSaved(entry ? 'Kayıt güncellendi' : `${KIND_LABELS[kind]} eklendi`);
   }
 
   async function handleDelete() {
-    if (!entry || !confirm(`"${entry.row.description}" silinsin mi?`)) return;
+    if (!entry) return;
+    const ok = await confirm({ title: 'Kayıt silinsin mi?', message: `"${entry.row.description}" kalıcı olarak silinir.`, confirmText: 'Sil', danger: true });
+    if (!ok) return;
     setBusy(true);
     const { error: err } = await supabase.from(tableOf(entry.kind)).delete().eq('id', entry.row.id);
     setBusy(false);
     if (err) return setError('Silinemedi: ' + err.message);
-    onSaved();
+    onSaved('Kayıt silindi');
   }
 
   return (
@@ -127,7 +131,7 @@ export default function EntryForm({ customerId, entry, initialKind, initialPartn
                   key={p}
                   onClick={() => setPartner(p)}
                   className={`rounded-lg border px-2 py-2 text-sm font-semibold ${
-                    partner === p ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                    partner === p ? 'border-advance-600 bg-advance-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   {p}
@@ -157,20 +161,26 @@ export default function EntryForm({ customerId, entry, initialKind, initialPartn
         </div>
         {kind === 'expense' && (
           <div>
-            <label className={labelClass}>Kategori (isteğe bağlı)</label>
-            <input className={inputClass} list="expense-categories" value={category} onChange={e => setCategory(e.target.value)} />
-            <datalist id="expense-categories">
-              {['Malzeme', 'İşçilik / Usta', 'Nakliye', 'Yakıt', 'Yemek', 'Diğer'].map(c => (
-                <option key={c} value={c} />
+            <label className={labelClass}>Kategori</label>
+            <div className="flex flex-wrap gap-1.5">
+              {EXPENSE_CATEGORIES.map(c => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setCategory(category === c ? '' : c)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium ${category === c ? 'border-expense-600 bg-expense-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {c}
+                </button>
               ))}
-            </datalist>
+            </div>
           </div>
         )}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <button
           type="submit"
           disabled={busy}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
           Kaydet

@@ -107,7 +107,7 @@ export function buildStatement(entries: LedgerEntry[], from?: string, to?: strin
 
 export function statementToText(
   st: Statement,
-  opts: { customerName: string; businessName?: string; from?: string; to?: string }
+  opts: { customerName: string; businessName?: string; from?: string; to?: string; extraLines?: string[]; footerLines?: string[] }
 ): string {
   const line = '------------------------------';
   const out: string[] = [];
@@ -127,6 +127,8 @@ export function statementToText(
   out.push(`Toplam borç: ${formatMoney(st.totalDebit)}`);
   out.push(`Toplam ödeme: ${formatMoney(st.totalCredit)}`);
   out.push(`GÜNCEL BAKİYE: ${formatMoney(Math.abs(st.closing))} (${balanceLabel(st.closing)})`);
+  if (opts.extraLines?.length) out.push(line, ...opts.extraLines);
+  if (opts.footerLines?.length) out.push(line, ...opts.footerLines);
   return out.join('\n');
 }
 
@@ -141,6 +143,7 @@ export interface ParsedEntry {
   date: string;
   guessed: boolean; // tür anahtar kelimeden bulunamadıysa true
   partner?: Partner; // kind === 'advance' ise
+  category?: string; // kind === 'expense' ise masraf kategorisi
 }
 
 const L = 'a-zA-ZçğıöşüÇĞİÖŞÜâîû';
@@ -150,14 +153,54 @@ const MONTHS: Record<string, number> = {
   temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
 };
 
+// ===================== İNŞAAT / DEKORASYON SÖZLÜĞÜ =====================
+// Masraf kategorileri ve anahtar kelimeleri. Sıra önemli: özelden genele (ilk eşleşen kazanır).
+// "=" ile biten kelime tam eşleşir, boşluk içeren ifade metin içinde aranır, diğerleri kelime başına göre.
+export const EXPENSE_CATEGORIES = [
+  'Malzeme',
+  'İşçilik / Taşeron',
+  'Nakliye',
+  'Ekipman / Kiralama',
+  'Yakıt',
+  'Yemek',
+  'Hafriyat / Moloz',
+  'Diğer',
+] as const;
+
+const CATEGORY_KEYWORDS: [string, string[]][] = [
+  ['Hafriyat / Moloz', ['hafriyat', 'moloz', 'konteyner', 'döküm sahası']],
+  ['Ekipman / Kiralama', ['iskele', 'vinç', 'vinc', 'jeneratör', 'kompresör', 'kiralama', 'kira', 'makine', 'ekipman', 'hilti', 'kırıcı', 'alet']],
+  ['Nakliye', ['nakliy', 'nakliye', 'kargo', 'hamal', 'taşıma', 'tasima', 'kamyon', 'lojistik']],
+  ['Yakıt', ['yakıt', 'yakit', 'mazot', 'motorin', 'benzin', 'akaryakıt']],
+  ['Yemek', ['yeme', 'öğle', 'ogle', 'kahvaltı', 'çay=']],
+  ['İşçilik / Taşeron', ['usta', 'işçi', 'isci', 'kalfa', 'taşeron', 'taseron', 'yevmiye', 'elektrikçi', 'tesisatçı', 'boyacı', 'fayansçı', 'alçıcı', 'sıvacı', 'marangoz', 'amele', 'montajcı', 'ekip=', 'ekibe', 'ekibin']],
+  ['Malzeme', [
+    'malzeme', 'boya', 'astar', 'macun', 'alçı', 'alci', 'fırça', 'rulo', 'vida', 'dübel', 'silikon', 'hırdavat', 'hirdavat', 'nalbur',
+    'çimento', 'cimento', 'beton', 'demir', 'tuğla', 'tugla', 'gazbeton', 'ytong', 'briket', 'kum=', 'çakıl', 'mıcır', 'sıva', 'şap', 'harç',
+    'profil', 'izolasyon', 'mantolama', 'strafor', 'taşyünü', 'membran', 'seramik', 'fayans', 'mermer', 'granit', 'parke', 'laminat',
+    'kablo', 'boru', 'vitrifiye', 'armatür', 'batarya', 'lavabo', 'klozet', 'kapı', 'pencere', 'cam=', 'pvc', 'kontrplak', 'mdf', 'sunta',
+    'kereste', 'tahta', 'ahşap', 'çivi', 'yapıştırıcı', 'derz', 'köpük', 'koli', 'bant', 'naylon', 'kağıt', 'kağıd', 'zımpara', 'zimpara',
+    'kartonpiyer', 'alüminyum', 'aluminyum',
+  ]],
+];
+
+const LABOR_CATEGORY = 'İşçilik / Taşeron';
+
 // Sıra önemli: önce kesin ifadeler, sonra isimler
 const EXPENSE_STRONG = ['masraf', 'gider', 'harcama', 'harcad', 'ödedim', 'ödedik', 'odedim', 'odedik', 'verdim', 'verdik', 'ödeme yaptım', 'ödeme yaptık', 'satın aldı'];
-const CREDIT_STRONG = ['tahsil', 'ödedi', 'odedi', 'ödeme yaptı', 'ödeme geldi', 'para geldi', 'yatırdı', 'yatirdi', 'yatırıldı', 'gönderdi', 'gonderdi', 'havale', 'eft', 'fast', 'kapora', 'avans', 'peşinat', 'pesinat', 'çek verdi', 'çek geldi', 'senet'];
-const EXPENSE_NOUNS = ['malzeme', 'boya', 'astar', 'macun', 'alçı', 'alci', 'fırça', 'rulo', 'vida', 'dübel', 'silikon', 'hırdavat', 'hirdavat', 'nalbur', 'usta', 'işçi', 'isci', 'kalfa', 'yevmiye', 'nakliye', 'kargo', 'yakıt', 'yakit', 'benzin', 'mazot', 'yemek', 'otopark', 'kira', 'taşeron', 'taseron', 'koli', 'bant', 'naylon', 'kağıt', 'kağıd', 'zımpara', 'zimpara'];
+const CREDIT_STRONG = [
+  'tahsil', 'ödedi', 'odedi', 'ödeme yaptı', 'ödeme geldi', 'para geldi', 'yatırdı', 'yatirdi', 'yatırıldı', 'gönderdi', 'gonderdi',
+  'havale', 'eft', 'fast', 'kapora', 'avans', 'peşinat', 'pesinat', 'çek verdi', 'çek geldi', 'senet',
+  'hakediş ödemesi', 'hakedis odemesi', 'ödemesi geldi', 'ödemesi yapıldı', 'ödemesi alındı', 'ödemesini yaptı',
+];
+const EXPENSE_NOUNS = [...CATEGORY_KEYWORDS.flatMap(([, kws]) => kws), 'otopark'];
 const PURCHASE_VERBS = ['aldım', 'aldık', 'aldim', 'aldik', 'alındı', 'alindi', 'alınd', 'satın'];
-// Malzeme adı geçse de yapılan işi anlatan kelimeler (ör. "salon boyası işçilik")
+// Malzeme adı geçse de yapılan işi anlatan kelimeler (ör. "salon boyası işçilik", "parke döşeme")
 // Kökler: Türkçe ses değişimine dayanıklı (işçilik → işçiliği, fatura → faturası, hakediş → hakedişi)
-const DEBIT_STRONG = ['işçil', 'iscil', 'fatur', 'hakedi', 'uygulam', 'montaj', 'tadilat', 'bedel', 'iş=', 'işi=', 'işin=', 'işler=', 'işleri=', 'kesild', 'kestik'];
+const DEBIT_STRONG = [
+  'işçil', 'iscil', 'fatur', 'hakedi', 'uygulam', 'montaj', 'tadilat', 'bedel', 'iş=', 'işi=', 'işin=', 'işler=', 'işleri=', 'ek iş',
+  'kesild', 'kestik', 'döşe', 'kurulum', 'yapım', 'söküm', 'sökü', 'yıkım', 'boyama', 'boyandı', 'onarım', 'tamirat', 'imalat', 'keşif', 'metraj',
+];
 const CREDIT_WEAK = ['aldım', 'aldık', 'alındı', 'aldim', 'aldik', 'alindi', 'ödeme', 'odeme', 'nakit'];
 const DEBIT_WORDS = ['fatur', 'iş=', 'işi=', 'işçil', 'iscil', 'bedel', 'tutar', 'borç', 'borc', 'hakedi', 'montaj', 'uygulama', 'keşif', 'kesif', 'sözleşme', 'tadilat', 'dekorasyon', 'tasarım', 'proje', 'teklif', 'kesild', 'kestik', 'kesti', 'salon', 'oda', 'mutfak', 'banyo', 'cephe', 'tavan', 'duvar', 'parke', 'seramik', 'fayans', 'kartonpiyer', 'asma tavan', 'boyandı', 'bitti', 'teslim'];
 
@@ -208,10 +251,22 @@ export function detectPartner(text: string): Partner | null {
   return null;
 }
 
-function mentionsMaterial(text: string): boolean {
+function splitWords(text: string): [string, string[]] {
   const lower = trLower(text);
-  const words = lower.split(new RegExp(`[^${L}]+`)).filter(Boolean);
-  return hasKeyword(lower, words, EXPENSE_NOUNS.filter(n => !['usta', 'işçi', 'isci', 'kalfa', 'yevmiye'].includes(n)));
+  return [lower, lower.split(new RegExp(`[^${L}]+`)).filter(Boolean)];
+}
+
+// Masrafın kategorisi (Malzeme, İşçilik / Taşeron, Nakliye ...); bulunamazsa null
+export function expenseCategory(text: string): string | null {
+  const [lower, words] = splitWords(text);
+  for (const [cat, kws] of CATEGORY_KEYWORDS) if (hasKeyword(lower, words, kws)) return cat;
+  return null;
+}
+
+// İşçilik dışında bir masraf kalemi geçiyor mu (ortağın malzeme alması avans değildir)
+function mentionsMaterial(text: string): boolean {
+  const [lower, words] = splitWords(text);
+  return CATEGORY_KEYWORDS.some(([cat, kws]) => cat !== LABOR_CATEGORY && hasKeyword(lower, words, kws));
 }
 
 function buildDate(d: number, mo: number, y?: number): string | null {
@@ -324,6 +379,7 @@ export function parseChatMessage(text: string): ParsedEntry[] {
     const partner = detectPartner(seg);
     const isAdvance = partner !== null && !mentionsMaterial(seg);
     if (isAdvance) kind = 'advance';
+    const category = kind === 'expense' ? expenseCategory(seg) : null;
     entries.push({
       kind: kind ?? 'debit',
       amount: Math.round(best.value * 100) / 100,
@@ -331,6 +387,7 @@ export function parseChatMessage(text: string): ParsedEntry[] {
       date: segDate.date ?? globalDate ?? todayStr(),
       guessed: kind === null,
       ...(isAdvance ? { partner: partner! } : {}),
+      ...(category ? { category } : {}),
     });
   }
   for (const e of entries) if (!e.description) e.description = KIND_LABELS[e.kind];
@@ -453,6 +510,7 @@ export function parseDocument(text: string): ParsedDocument {
     }) ?? '';
   const description = cleanDescription(`${docType === 'Belge' ? '' : docType + ': '}${vendor.slice(0, 60)}`) || docType;
 
+  const category = kind === 'expense' ? expenseCategory(description) ?? (docType === 'Fiş' || docType === 'Fatura' ? 'Malzeme' : undefined) : undefined;
   return {
     kind,
     amount: Math.round(amount * 100) / 100,
@@ -461,6 +519,7 @@ export function parseDocument(text: string): ParsedDocument {
     guessed: docType === 'Belge',
     docType,
     candidates: all.slice(0, 8),
+    ...(category ? { category } : {}),
   };
 }
 
@@ -546,13 +605,17 @@ export function parseDocumentItems(text: string): DocumentItem[] {
     if (!desc) continue;
 
     const kind = detectKind(desc) ?? detectKind(line);
+    const finalKind = kind ?? doc.kind;
+    const category =
+      finalKind === 'expense' ? expenseCategory(desc) ?? (doc.docType === 'Fiş' || doc.docType === 'Fatura' ? 'Malzeme' : undefined) : undefined;
     items.push({
-      kind: kind ?? doc.kind,
+      kind: finalKind,
       amount: Math.round(amount * 100) / 100,
       description: desc.slice(0, 120),
       date: lineDate ?? doc.date,
       guessed: kind === null,
       line,
+      ...(category ? { category } : {}),
     });
   }
   return items;

@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body { @apply bg-slate-50 text-slate-800; font-feature-settings: 'cv11', 'ss01'; }
+  /* Tutar sütunları hizalı dursun */
+  .tabular { font-variant-numeric: tabular-nums; }
+}
+
+@layer utilities {
+  /* Yatay kaydırılan şeritlerde kaydırma çubuğunu gizle */
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
+
 @media print {
   .no-print { display: none !important; }
   body { background: white; }

@@ -32,13 +32,13 @@ export default function LedgerTab({ transactions, onEdit, onAdd }: Props) {
               </thead>
               <tbody>
                 {rows.map(({ entry, balance }) => (
-                  <tr key={entry.id} onClick={() => onEdit(byId.get(entry.id)!)} className="cursor-pointer border-t border-slate-100 hover:bg-sky-50">
+                  <tr key={entry.id} onClick={() => onEdit(byId.get(entry.id)!)} className="cursor-pointer border-t border-slate-100 hover:bg-debit-50">
                     <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(entry.entry_date)}</td>
                     <td className="px-3 py-2 text-slate-700">{entry.description}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-rose-600">
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-debit-600">
                       {entry.entry_type === 'debit' ? formatMoney(entry.amount) : ''}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-emerald-600">
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-credit-600">
                       {entry.entry_type === 'credit' ? formatMoney(entry.amount) : ''}
                     </td>
                     <td className="hidden whitespace-nowrap px-3 py-2 text-right text-slate-600 sm:table-cell">{formatMoney(balance)}</td>
@@ -50,10 +50,10 @@ export default function LedgerTab({ transactions, onEdit, onAdd }: Props) {
         )}
       </div>
       <div className="no-print flex gap-2 border-t border-slate-200 bg-white p-3">
-        <button onClick={() => onAdd('debit')} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-rose-600 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">
+        <button onClick={() => onAdd('debit')} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-debit-600 py-2.5 text-sm font-semibold text-white hover:bg-debit-700">
           <Plus className="h-4 w-4" /> İş / Fatura
         </button>
-        <button onClick={() => onAdd('credit')} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+        <button onClick={() => onAdd('credit')} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-credit-600 py-2.5 text-sm font-semibold text-white hover:bg-credit-700">
           <Plus className="h-4 w-4" /> Tahsilat
         </button>
       </div>

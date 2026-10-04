@@ -26,21 +26,22 @@ interface Row {
   amount: string;
   date: string;
   description: string;
+  category?: string;
   line?: string;
 }
 
 const KIND_STYLE: Record<EntryKind, string> = {
-  debit: 'bg-rose-600 border-rose-600',
-  credit: 'bg-emerald-600 border-emerald-600',
-  expense: 'bg-amber-500 border-amber-500',
-  advance: 'bg-violet-600 border-violet-600',
+  debit: 'bg-debit-600 border-debit-600',
+  credit: 'bg-credit-600 border-credit-600',
+  expense: 'bg-expense-500 border-expense-500',
+  advance: 'bg-advance-600 border-advance-600',
 };
 
 const KIND_TEXT: Record<EntryKind, string> = {
-  debit: 'text-rose-600',
-  credit: 'text-emerald-600',
-  expense: 'text-amber-600',
-  advance: 'text-violet-600',
+  debit: 'text-debit-600',
+  credit: 'text-credit-600',
+  expense: 'text-expense-600',
+  advance: 'text-advance-600',
 };
 
 const KINDS: EntryKind[] = ['debit', 'credit', 'expense'];
@@ -80,8 +81,8 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
         const its = parseDocumentItems(t);
         setText(t);
         setParsed(p);
-        setSingle({ selected: true, kind: p.kind, amount: p.amount ? money(p.amount) : '', date: p.date, description: p.description });
-        setItems(its.map(i => ({ selected: true, kind: i.kind, amount: money(i.amount), date: i.date, description: i.description, line: i.line })));
+        setSingle({ selected: true, kind: p.kind, amount: p.amount ? money(p.amount) : '', date: p.date, description: p.description, category: p.category });
+        setItems(its.map(i => ({ selected: true, kind: i.kind, amount: money(i.amount), date: i.date, description: i.description, category: i.category, line: i.line })));
         // Birden fazla kalem varsa kalem kalem işle
         setMode(its.length >= 2 ? 'items' : p.amount ? 'single' : its.length === 1 ? 'items' : 'none');
       })
@@ -116,7 +117,7 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
       const value = parseAmountInput(r.amount);
       if (!(value > 0)) return setError(`Geçerli bir tutar girin: "${r.description || 'kalem'}"`);
       if (!r.date) return setError(`Tarih eksik: "${r.description || 'kalem'}"`);
-      entries.push({ kind: r.kind, amount: Math.round(value * 100) / 100, description: r.description.trim() || KIND_LABELS[r.kind], date: r.date });
+      entries.push({ kind: r.kind, amount: Math.round(value * 100) / 100, description: r.description.trim() || KIND_LABELS[r.kind], date: r.date, category: r.kind === 'expense' ? r.category ?? null : null });
     }
     setBusy(true);
     setError('');
@@ -171,11 +172,11 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
 
       {loading ? (
         <div className="py-8 text-center">
-          <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-sky-600" />
+          <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-debit-600" />
           <p className="text-sm text-slate-600">{stage}</p>
           {ratio !== undefined && (
             <div className="mx-auto mt-3 h-1.5 w-48 overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full bg-sky-500 transition-all" style={{ width: `${Math.round(ratio * 100)}%` }} />
+              <div className="h-full bg-debit-500 transition-all" style={{ width: `${Math.round(ratio * 100)}%` }} />
             </div>
           )}
         </div>
@@ -193,7 +194,7 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
                 key={o.k}
                 disabled={o.disabled}
                 onClick={() => setMode(o.k)}
-                className={`rounded-md px-2 py-1.5 ${mode === o.k ? 'bg-white text-sky-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-40`}
+                className={`rounded-md px-2 py-1.5 ${mode === o.k ? 'bg-white text-debit-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-40`}
               >
                 {o.label}
               </button>
@@ -207,7 +208,7 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
                 <button
                   type="button"
                   onClick={() => setItems(rows => rows.map(r => ({ ...r, selected: selectedCount !== rows.length })))}
-                  className="flex items-center gap-1 font-medium text-sky-700"
+                  className="flex items-center gap-1 font-medium text-debit-700"
                 >
                   {selectedCount === items.length ? <Square className="h-3.5 w-3.5" /> : <ListChecks className="h-3.5 w-3.5" />}
                   {selectedCount === items.length ? 'Hiçbiri' : 'Tümü'}
@@ -221,13 +222,13 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
                       <input
                         value={r.description}
                         onChange={e => updateItem(i, { description: e.target.value })}
-                        className="min-w-0 flex-1 rounded border border-transparent px-1 py-0.5 text-sm font-medium text-slate-700 hover:border-slate-200 focus:border-sky-400 focus:outline-none"
+                        className="min-w-0 flex-1 rounded border border-transparent px-1 py-0.5 text-sm font-medium text-slate-700 hover:border-slate-200 focus:border-debit-400 focus:outline-none"
                       />
                       <input
                         value={r.amount}
                         inputMode="decimal"
                         onChange={e => updateItem(i, { amount: e.target.value })}
-                        className={`w-24 rounded border border-slate-200 px-1.5 py-0.5 text-right text-sm font-bold ${KIND_TEXT[r.kind]} focus:border-sky-400 focus:outline-none`}
+                        className={`w-24 rounded border border-slate-200 px-1.5 py-0.5 text-right text-sm font-bold ${KIND_TEXT[r.kind]} focus:border-debit-400 focus:outline-none`}
                       />
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
@@ -286,7 +287,7 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
                       type="button"
                       key={c}
                       onClick={() => setSingle({ ...single, amount: money(c) })}
-                      className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:bg-sky-100"
+                      className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:bg-debit-100"
                     >
                       {formatMoney(c, false)}
                     </button>
@@ -323,7 +324,7 @@ export default function DocumentImport({ customerId, file, onClose, onSaved }: P
           <button
             type="submit"
             disabled={busy || (mode === 'items' && selectedCount === 0)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             {mode === 'items' ? `${selectedCount} kaydı ekle` : mode === 'single' ? 'Kaydet' : 'Dosyayı sakla'}

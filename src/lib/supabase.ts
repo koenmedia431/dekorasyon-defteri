@@ -13,7 +13,29 @@ export interface Customer {
   email: string | null;
   address: string | null;
   notes: string | null;
+  status: 'quote' | 'active' | 'done';
+  project_title: string | null;
+  contract_amount: number | null;
+  start_date: string | null;
+  due_date: string | null;
   created_at: string;
+}
+
+export type CustomerWithBalance = Customer & { balance: number };
+
+// Ekstre antetinde kullanılan firma bilgileri
+export interface BusinessSettings {
+  user_id?: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  tax_office: string | null;
+  tax_no: string | null;
+  iban: string | null;
+  bank_name: string | null;
+  logo_path: string | null;
+  statement_note: string | null;
 }
 
 export type EntryType = 'debit' | 'credit';

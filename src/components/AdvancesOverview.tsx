@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { HandCoins, Loader2 } from 'lucide-react';
+import { HandCoins, Loader2, Download } from 'lucide-react';
 import { supabase, type Advance, type Customer } from '@/lib/supabase';
 import { formatMoney, formatDate, PARTNERS } from '@/lib/accounting';
+import { navigate } from '@/lib/router';
+import { downloadCsv } from '@/lib/exportCsv';
 
 interface Props {
   customers: Customer[];
-  onOpenCustomer: (id: string) => void;
 }
+
+const onOpenCustomer = (id: string) => navigate({ name: 'customers', id });
 
 type Period = 'all' | 'thisMonth' | 'thisYear';
 
 // Tüm projeler: hangi ortak hangi projeden ne kadar avans aldı
-export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
+export default function AdvancesOverview({ customers }: Props) {
   const [advances, setAdvances] = useState<Advance[] | null>(null);
   const [period, setPeriod] = useState<Period>('all');
 
@@ -46,16 +49,27 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
     return [...m].sort((x, y) => (names.get(x[0]) ?? '').localeCompare(names.get(y[0]) ?? '', 'tr'));
   }, [filtered, names]);
 
+  function exportCsv() {
+    downloadCsv(
+      'ortak-avanslari',
+      ['Tarih', 'Ortak', 'Proje / Müşteri', 'Açıklama', 'Tutar'],
+      filtered.map(a => [formatDate(a.advance_date), a.partner, names.get(a.customer_id) ?? '', a.description, a.amount])
+    );
+  }
+
   const partnerTotal = (p: string) => filtered.filter(a => a.partner === p).reduce((s, a) => s + a.amount, 0);
   const grand = filtered.reduce((s, a) => s + a.amount, 0);
 
   return (
-    <div className="h-full overflow-y-auto p-4 lg:p-6">
+    <div className="h-full w-full overflow-y-auto p-4 lg:p-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-xl font-bold text-slate-800">
-          <HandCoins className="h-5 w-5 text-violet-600" /> Ortak Avansları
+          <HandCoins className="h-5 w-5 text-advance-600" /> Ortak Avansları
         </h2>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button onClick={exportCsv} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50">
+            <Download className="h-3.5 w-3.5" /> Excel
+          </button>
           {([
             ['all', 'Tümü'],
             ['thisYear', 'Bu Yıl'],
@@ -64,7 +78,7 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
             <button
               key={k}
               onClick={() => setPeriod(k)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${period === k ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300 bg-white text-slate-600'}`}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${period === k ? 'border-advance-600 bg-advance-600 text-white' : 'border-slate-300 bg-white text-slate-600'}`}
             >
               {label}
             </button>
@@ -74,7 +88,7 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
 
       {advances === null ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+          <Loader2 className="h-6 w-6 animate-spin text-advance-600" />
         </div>
       ) : (
         <>
@@ -82,11 +96,11 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
             {partners.map(p => (
               <div key={p} className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold text-slate-500">{p}</p>
-                <p className="whitespace-nowrap text-base font-bold text-violet-700">{formatMoney(partnerTotal(p))}</p>
+                <p className="whitespace-nowrap text-base font-bold text-advance-700">{formatMoney(partnerTotal(p))}</p>
               </div>
             ))}
-            <div className="rounded-xl bg-violet-600 p-3 text-white">
-              <p className="text-xs font-semibold text-violet-100">Toplam</p>
+            <div className="rounded-xl bg-advance-600 p-3 text-white">
+              <p className="text-xs font-semibold text-advance-100">Toplam</p>
               <p className="whitespace-nowrap text-base font-bold">{formatMoney(grand)}</p>
             </div>
           </div>
@@ -109,12 +123,12 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
                   </thead>
                   <tbody>
                     {matrix.map(([cid, row]) => (
-                      <tr key={cid} onClick={() => onOpenCustomer(cid)} className="cursor-pointer border-t border-slate-100 hover:bg-violet-50">
+                      <tr key={cid} onClick={() => onOpenCustomer(cid)} className="cursor-pointer border-t border-slate-100 hover:bg-advance-50">
                         <td className="px-3 py-2 font-medium text-slate-700">{names.get(cid) ?? 'Silinmiş müşteri'}</td>
                         {partners.map(p => (
                           <td key={p} className="whitespace-nowrap px-3 py-2 text-right text-slate-600">{row.get(p) ? formatMoney(row.get(p)!) : '—'}</td>
                         ))}
-                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-violet-700">
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-advance-700">
                           {formatMoney([...row.values()].reduce((s, v) => s + v, 0))}
                         </td>
                       </tr>
@@ -124,9 +138,9 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
                     <tr>
                       <td className="px-3 py-2 text-slate-700">Toplam</td>
                       {partners.map(p => (
-                        <td key={p} className="whitespace-nowrap px-3 py-2 text-right text-violet-700">{formatMoney(partnerTotal(p))}</td>
+                        <td key={p} className="whitespace-nowrap px-3 py-2 text-right text-advance-700">{formatMoney(partnerTotal(p))}</td>
                       ))}
-                      <td className="whitespace-nowrap px-3 py-2 text-right text-violet-800">{formatMoney(grand)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right text-advance-800">{formatMoney(grand)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -135,13 +149,13 @@ export default function AdvancesOverview({ customers, onOpenCustomer }: Props) {
               <h3 className="mb-2 text-sm font-semibold text-slate-600">Son avanslar</h3>
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 {filtered.slice(0, 50).map(a => (
-                  <button key={a.id} onClick={() => onOpenCustomer(a.customer_id)} className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-0 hover:bg-violet-50">
-                    <span className="w-16 flex-shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-center text-xs font-semibold text-violet-700">{a.partner}</span>
+                  <button key={a.id} onClick={() => onOpenCustomer(a.customer_id)} className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-0 hover:bg-advance-50">
+                    <span className="w-16 flex-shrink-0 rounded-full bg-advance-100 px-2 py-0.5 text-center text-xs font-semibold text-advance-700">{a.partner}</span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-slate-700">{names.get(a.customer_id) ?? '—'} · {a.description}</p>
                       <p className="text-xs text-slate-400">{formatDate(a.advance_date)}</p>
                     </div>
-                    <span className="whitespace-nowrap text-sm font-bold text-violet-700">{formatMoney(a.amount)}</span>
+                    <span className="whitespace-nowrap text-sm font-bold text-advance-700">{formatMoney(a.amount)}</span>
                   </button>
                 ))}
               </div>

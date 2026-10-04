@@ -231,3 +231,45 @@ test('ortak avansı: karışık mesaj', () => {
     ['advance', 'Cihad', 4000],
   ]);
 });
+
+import { toCsv } from './exportCsv.ts';
+
+test('csv: Excel uyumlu (BOM, noktalı virgül, virgül ondalık, tırnak)', () => {
+  const csv = toCsv(['Tarih', 'Açıklama', 'Tutar'], [['03.10.2026', 'Boya; fırça "set"', 1250.5]]);
+  assert.ok(csv.startsWith('﻿'));
+  assert.equal(csv.slice(1), 'Tarih;Açıklama;Tutar\r\n03.10.2026;"Boya; fırça ""set""";1250,50');
+});
+
+test('inşaat: hakediş, ek iş ve iş kalemleri borç olur', () => {
+  const h = one('1. hakediş 150.000 TL');
+  assert.equal(h.kind, 'debit');
+  assert.equal(h.amount, 150000);
+  assert.equal(one('ek iş: banyo dolabı 12000').kind, 'debit');
+  assert.equal(one('salon parke döşeme işçiliği 30000').kind, 'debit');
+  assert.equal(one('mutfak dolabı montajı 45 bin').kind, 'debit');
+  assert.equal(one('banyo yıkım ve söküm 8000').kind, 'debit');
+});
+
+test('inşaat: hakediş ödemesi tahsilat olur', () => {
+  assert.equal(one('hakediş ödemesi geldi 150 bin').kind, 'credit');
+  assert.equal(one('2. hakediş ödemesi yapıldı 80000').kind, 'credit');
+});
+
+test('inşaat: masraflar kategorisiyle', () => {
+  const cases: [string, string][] = [
+    ['çimento ve kum aldım 4500', 'Malzeme'],
+    ['alçıpan ve profil 12.300', 'Malzeme'],
+    ['taşeron elektrikçi 8000', 'İşçilik / Taşeron'],
+    ['usta yevmiyesi 1500', 'İşçilik / Taşeron'],
+    ['iskele kirası 3000', 'Ekipman / Kiralama'],
+    ['moloz dökümü 2500', 'Hafriyat / Moloz'],
+    ['malzeme nakliyesi 1800', 'Nakliye'],
+    ['mazot 2000', 'Yakıt'],
+    ['ekip yemeği 900', 'Yemek'],
+  ];
+  for (const [text, cat] of cases) {
+    const e = one(text);
+    assert.equal(e.kind, 'expense', text);
+    assert.equal(e.category, cat, text);
+  }
+});
