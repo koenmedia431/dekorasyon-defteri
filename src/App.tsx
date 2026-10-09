@@ -66,10 +66,10 @@ function Shell({ userEmail }: { userEmail: string }) {
   const hideBottomNav = route.name === 'customers' && !!selectedId;
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-slate-50">
+    <div className="print-flow flex h-[100dvh] overflow-hidden bg-slate-50">
       <NavRail route={route} userEmail={userEmail} customerCount={customers.length} />
 
-      <main className={`flex min-w-0 flex-1 overflow-hidden ${hideBottomNav ? '' : 'pb-16 lg:pb-0'}`}>
+      <main className={`print-flow flex min-w-0 flex-1 overflow-hidden ${hideBottomNav ? '' : 'pb-16 lg:pb-0'}`}>
         {route.name === 'dashboard' && <Dashboard customers={customers} onAddCustomer={() => setShowNewCustomer(true)} />}
 
         {route.name === 'customers' && (
@@ -77,7 +77,7 @@ function Shell({ userEmail }: { userEmail: string }) {
             <aside className={`no-print w-full flex-shrink-0 border-r border-slate-200 lg:block lg:w-80 ${selectedId ? 'hidden' : 'block'}`}>
               <CustomerList customers={customers} selectedId={selectedId} onAdd={() => setShowNewCustomer(true)} />
             </aside>
-            <section className={`min-w-0 flex-1 ${selectedId ? 'block' : 'hidden lg:block'}`}>
+            <section className={`print-flow min-w-0 flex-1 ${selectedId ? 'block' : 'hidden lg:block'}`}>
               {selected ? (
                 <CustomerPage
                   key={selected.id}

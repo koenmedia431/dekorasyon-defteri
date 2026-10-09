@@ -84,7 +84,7 @@ export default function CustomerDetail({ customer, transactions, expenses, advan
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="print-flow flex h-full flex-col">
       <header className="no-print border-b border-slate-200 bg-white px-4 pt-3 lg:px-6 lg:pt-4">
         <div className="flex items-start gap-2">
           <a href={href({ name: 'customers' })} className="-ml-1 mt-0.5 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" aria-label="Müşteri listesi">
@@ -160,7 +160,7 @@ export default function CustomerDetail({ customer, transactions, expenses, advan
         </nav>
       </header>
 
-      <div className="min-h-0 flex-1">
+      <div className="print-flow min-h-0 flex-1">
         {tab === 'chat' && (
           <ChatTab
             customerId={customer.id}
@@ -177,7 +177,7 @@ export default function CustomerDetail({ customer, transactions, expenses, advan
         {tab === 'ledger' && <LedgerTab transactions={transactions} onEdit={editTx} onAdd={kind => setEntryModal({ kind })} />}
         {tab === 'expenses' && <ExpensesTab expenses={expenses} totalDebit={totalDebit} onEdit={editExp} onAdd={() => setEntryModal({ kind: 'expense' })} />}
         {tab === 'advances' && <AdvancesTab advances={advances} profit={profit} onEdit={editAdv} onAdd={partner => setEntryModal({ kind: 'advance', partner })} />}
-        {tab === 'statement' && <StatementTab customer={customer} transactions={transactions} />}
+        {tab === 'statement' && <StatementTab customer={customer} transactions={transactions} expenses={expenses} />}
       </div>
 
       {editingCustomer && (

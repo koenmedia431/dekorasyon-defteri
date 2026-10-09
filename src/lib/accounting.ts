@@ -132,6 +132,70 @@ export function statementToText(
   return out.join('\n');
 }
 
+// ===================== MASRAF EKSTRESİ =====================
+export interface ExpenseLike {
+  id: string;
+  amount: number;
+  description: string;
+  category: string | null;
+  expense_date: string;
+  created_at: string;
+}
+
+export interface ExpenseStatement {
+  rows: { entry: ExpenseLike; running: number }[];
+  total: number;
+  previousTotal: number; // seçilen dönemden önceki masraflar
+  byCategory: [string, number][]; // büyükten küçüğe
+}
+
+export function buildExpenseStatement(expenses: ExpenseLike[], from?: string, to?: string): ExpenseStatement {
+  const sorted = [...expenses].sort((a, b) =>
+    a.expense_date !== b.expense_date ? (a.expense_date < b.expense_date ? -1 : 1) : a.created_at < b.created_at ? -1 : 1
+  );
+  let previousTotal = 0;
+  let total = 0;
+  const rows: ExpenseStatement['rows'] = [];
+  const cats = new Map<string, number>();
+  for (const e of sorted) {
+    const amount = Number(e.amount);
+    if (from && e.expense_date < from) {
+      previousTotal += amount;
+      continue;
+    }
+    if (to && e.expense_date > to) continue;
+    total += amount;
+    const cat = e.category || 'Diğer';
+    cats.set(cat, (cats.get(cat) || 0) + amount);
+    rows.push({ entry: e, running: total });
+  }
+  return { rows, total, previousTotal, byCategory: [...cats].sort((a, b) => b[1] - a[1]) };
+}
+
+export function expenseStatementToText(
+  st: ExpenseStatement,
+  opts: { customerName: string; projectTitle?: string | null; businessName?: string; from?: string; to?: string; footerLines?: string[] }
+): string {
+  const line = '------------------------------';
+  const out: string[] = [];
+  out.push(`${opts.businessName ? opts.businessName + ' — ' : ''}MASRAF EKSTRESİ`);
+  out.push(`Proje: ${opts.customerName}${opts.projectTitle ? ' — ' + opts.projectTitle : ''}`);
+  out.push(
+    `Dönem: ${opts.from ? `${formatDate(opts.from)} - ${formatDate(opts.to || todayStr())}` : `Tüm masraflar (${formatDate(opts.to || todayStr())} itibarıyla)`}`
+  );
+  out.push(line);
+  for (const { entry } of st.rows) {
+    out.push(`${formatDate(entry.expense_date)}  ${entry.description}${entry.category ? ` (${entry.category})` : ''}`);
+    out.push(`   ${formatMoney(Number(entry.amount))}`);
+  }
+  if (st.rows.length === 0) out.push('Bu dönemde masraf yok.');
+  out.push(line);
+  for (const [cat, sum] of st.byCategory) out.push(`${cat}: ${formatMoney(sum)}`);
+  out.push(`TOPLAM MASRAF: ${formatMoney(st.total)}`);
+  if (opts.footerLines?.length) out.push(line, ...opts.footerLines);
+  return out.join('\n');
+}
+
 // ===================== SOHBET AYRIŞTIRICI =====================
 // "Salon boyası işçilik 18.000", "Ayşe hanım 10 bin kapora verdi",
 // "dün boya aldım 3.250, usta yevmiyesi 1500" gibi metinlerden kayıt çıkarır.

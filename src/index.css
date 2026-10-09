@@ -31,7 +31,30 @@
   }
 }
 
+/* Tek sayfa ölçümü sırasında belgeyi yazdırma görünümüne yaklaştır */
+.fit-measuring {
+  max-width: none !important;
+  padding: 0 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.fit-measuring.fit-dense td,
+.fit-measuring.fit-dense th { padding-top: 1px !important; padding-bottom: 1px !important; line-height: 1.3 !important; }
+
 @media print {
+  .fit-dense td,
+  .fit-dense th { padding-top: 1px !important; padding-bottom: 1px !important; line-height: 1.3 !important; }
   .no-print { display: none !important; }
   body { background: white; }
+  /* Ekran düzenindeki sabit yükseklik/kaydırma kutuları belgeyi kesmesin */
+  .print-flow { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
+  .fit-box { height: var(--print-box-h, auto) !important; overflow: hidden !important; }
+  .fit-page {
+    width: var(--print-width, auto) !important;
+    max-width: none !important;
+    margin: 0 !important;
+    transform: scale(var(--print-scale, 1));
+    transform-origin: top left;
+  }
 }

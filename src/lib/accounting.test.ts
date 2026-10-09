@@ -273,3 +273,17 @@ test('inşaat: masraflar kategorisiyle', () => {
     assert.equal(e.category, cat, text);
   }
 });
+
+test('masraf ekstresi dönem, toplam ve kategori', async () => {
+  const { buildExpenseStatement } = await import('./accounting.ts');
+  const mk = (id: string, d: string, a: number, c: string | null) => ({ id, amount: a, description: id, category: c, expense_date: d, created_at: d });
+  const st = buildExpenseStatement(
+    [mk('c', '2026-10-05', 300, 'Nakliye'), mk('a', '2026-09-20', 100, 'Malzeme'), mk('b', '2026-10-01', 500, 'Malzeme'), mk('d', '2026-10-02', 50, null)],
+    '2026-10-01'
+  );
+  assert.equal(st.previousTotal, 100);
+  assert.equal(st.total, 850);
+  assert.deepEqual(st.rows.map(r => r.entry.id), ['b', 'd', 'c']);
+  assert.equal(st.rows[2].running, 850);
+  assert.deepEqual(st.byCategory, [['Malzeme', 500], ['Nakliye', 300], ['Diğer', 50]]);
+});
