@@ -15,6 +15,22 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
+/* Sayfa kenar kutusu tanımlanınca Chrome kendi üst/alt bilgisini (adres satırı,
+   tarih, başlık) basmaz; böylece PDF'in altına site linki eklenmez. */
+@page {
+  size: A4;
+  margin: 14mm 12mm;
+  @top-left { content: ""; }
+  @top-right { content: ""; }
+  @bottom-left { content: ""; }
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-family: 'Inter Variable', system-ui, sans-serif;
+    font-size: 8pt;
+    color: #94a3b8;
+  }
+}
+
 @media print {
   .no-print { display: none !important; }
   body { background: white; }
